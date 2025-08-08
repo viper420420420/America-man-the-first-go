@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>America-Man: Freedom Rush</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px #4a5568;
+        }
+
+        canvas {
+            background-color: #0d1117;
+            border: 4px solid #4a5568;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+            max-width: 95vw;
+            width: 800px;
+            height: 400px;
+            touch-action: none; /* Prevents mobile browser actions like scrolling */
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            max-width: 95vw;
+            margin-top: 1rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+            z-index: 10;
+        }
+
+        .game-over-screen h2 {
+            font-size: 2.5rem;
+            color: #fc8181;
+            margin: 0 0 1rem 0;
+        }
+
+        .game-over-screen p {
+            font-size: 1.5rem;
+            margin: 0 0 1.5rem 0;
+        }
+
+        #restart-button {
+            padding: 0.75rem 2.5rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            border-radius: 9999px;
+            background-image: linear-gradient(to right, #48bb78, #38a169);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        #restart-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .mobile-controls {
+            display: flex;
+            justify-content: space-around;
+            width: 800px;
+            max-width: 95vw;
+            margin-top: 1rem;
+        }
+
+        .mobile-controls button {
+            background-color: #4a5568;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            width: 120px;
+            height: 60px;
+            touch-action: manipulation;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s;
+        }
+
+        .mobile-controls button:active {
+            transform: scale(0.95);
+        }
+
+        .jump-button {
+            background-image: linear-gradient(to bottom, #4299e1, #3182ce) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 class="mb-4">America-Man: Freedom Rush</h1>
+
+    <div class="game-info hidden lg:flex">
+        <span>Score: <span id="score">0</span></span>
+        <span>Lives: <span id="lives">3</span></span>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Game over screen, hidden by default -->
+    <div id="gameOver" class="game-over-screen hidden">
+        <h2 class="font-black">GAME OVER</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button id="restart-button">Play Again</button>
+    </div>
+
+    <!-- Mobile controls, visible on small screens -->
+    <div id="mobile-controls" class="mobile-controls flex lg:hidden">
+        <button id="move-left">◀</button>
+        <button id="jump-button" class="jump-button">Jump</button>
+        <button id="move-right">▶</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const livesDisplay = document.getElementById('lives');
+        const gameOverScreen = document.getElementById('gameOver');
+        const restartButton = document.getElementById('restart-button');
+        const finalScoreText = document.getElementById('finalScore');
+        const mobileControls = document.getElementById('mobile-controls');
+
+        // Game state variables
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let gameSpeed = 5;
+        let keys = {};
+        let touchControls = {};
+
+        // Canvas dimensions and responsiveness
+        const resizeCanvas = () => {
+            const containerWidth = window.innerWidth * 0.95;
+            canvas.width = containerWidth > 800 ? 800 : containerWidth;
+            canvas.height = canvas.width / 2; // Maintain aspect ratio
+        };
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Game classes
+        // Player class
+        class Player {
+            constructor() {
+                this.width = 40;
+                this.height = 60;
+                this.x = canvas.width / 4;
+                this.y = 0;
+                this.yVelocity = 0;
+                this.isJumping = false;
+                this.gravity = 0.8;
+                this.jumpStrength = 15;
+                this.speed = 4;
+            }
+
+            draw() {
+                // Draw America-man (Red, White, and Blue theme)
+                ctx.fillStyle = '#f56565'; // Red
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.fillStyle = '#e2e8f0'; // White
+                ctx.fillRect(this.x, this.y, this.width, this.height / 3);
+                ctx.fillStyle = '#4299e1'; // Blue
+                ctx.fillRect(this.x, this.y + this.height * 2 / 3, this.width, this.height / 3);
+            }
+
+            update() {
+                // Apply gravity
+                this.yVelocity += this.gravity;
+                this.y += this.yVelocity;
+
+                // Stop at the ground
+                if (this.y + this.height > canvas.height) {
+                    this.y = canvas.height - this.height;
+                    this.yVelocity = 0;
+                    this.isJumping = false;
+                }
+
+                // Handle horizontal movement
+                if (keys['ArrowLeft'] || touchControls['left']) {
+                    this.x -= this.speed;
+                }
+                if (keys['ArrowRight'] || touchControls['right']) {
+                    this.x += this.speed;
+                }
+
+                // Clamp player position
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.yVelocity = -this.jumpStrength;
+                    this.isJumping = true;
+                }
+            }
+        }
+
+        // Platform class
+        class Platform {
+            constructor(x, y, width, height) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = '#718096'; // Gray for platforms
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        // Obstacle (Robot) class
+        class Robot {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.width = size;
+                this.height = size;
+                this.color = '#a0aec0'; // Light gray for robots
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y - this.size, this.size, this.size);
+            }
+        }
+
+        // Collectible (Freedom Crystal) class
+        class FreedomCrystal {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+            }
+
+            draw() {
+                ctx.fillStyle = '#bee3f8'; // Light blue
+                ctx.beginPath();
+                // Star shape for the crystal
+                ctx.moveTo(this.x, this.y - this.size);
+                for (let i = 0; i < 5; i++) {
+                    ctx.lineTo(
+                        this.x + Math.cos( (18 + i * 72) * Math.PI / 180 ) * this.size,
+                        this.y - Math.sin( (18 + i * 72) * Math.PI / 180 ) * this.size
+                    );
+                    ctx.lineTo(
+                        this.x + Math.cos( (54 + i * 72) * Math.PI / 180 ) * this.size / 2,
+                        this.y - Math.sin( (54 + i * 72) * Math.PI / 180 ) * this.size / 2
+                    );
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        // Game world objects
+        let player, platforms, robots, crystals;
+
+        // Collision detection
+        function checkCollision(obj1, obj2) {
+            return obj1.x < obj2.x + obj2.width &&
+                   obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height &&
+                   obj1.y + obj1.height > obj2.y;
+        }
+        
+        // Check for player-robot collision
+        function checkRobotCollision(player, robot) {
+            return player.x < robot.x + robot.size &&
+                   player.x + player.width > robot.x &&
+                   player.y < robot.y &&
+                   player.y + player.height > robot.y - robot.size;
+        }
+
+        // Initial game setup
+        function init() {
+            player = new Player();
+            platforms = [];
+            robots = [];
+            crystals = [];
+            score = 0;
+            lives = 3;
+            gameRunning = true;
+            gameOverScreen.classList.add('hidden');
+            scoreDisplay.textContent = score;
+            livesDisplay.textContent = lives;
+            // Show mobile controls on small screens
+            if (window.innerWidth < 1024) {
+                mobileControls.style.display = 'flex';
+            } else {
+                mobileControls.style.display = 'none';
+            }
+
+            generateWorld();
+        }
+
+        // Generate game world elements
+        function generateWorld() {
+            // Reset existing elements
+            platforms = [];
+            robots = [];
+            crystals = [];
+
+            let currentX = canvas.width;
+            while (currentX < 4000) {
+                const type = Math.floor(Math.random() * 3); // 0: platform, 1: robot, 2: crystal
+
+                if (type === 0) {
+                    // Create a platform
+                    const width = Math.random() * 200 + 100;
+                    const height = 20;
+                    const y = Math.random() * 100 + canvas.height - height - 50;
+                    platforms.push(new Platform(currentX, y, width, height));
+                    currentX += width + Math.random() * 200 + 50;
+                } else if (type === 1) {
+                    // Create a robot
+                    const size = Math.random() * 30 + 20;
+                    robots.push(new Robot(currentX, canvas.height, size));
+                    currentX += size + Math.random() * 150 + 50;
+                } else {
+                    // Create a crystal
+                    const size = 15;
+                    const y = Math.random() * 150 + 50;
+                    crystals.push(new FreedomCrystal(currentX, y, size));
+                    currentX += size + Math.random() * 100 + 30;
+                }
+            }
+        }
+
+        // Game loop
+        function animate() {
+            if (!gameRunning) return;
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update player
+            player.update();
+            
+            // Draw ground
+            ctx.fillStyle = '#4a5568';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+
+            // Move and draw platforms
+            platforms.forEach(p => {
+                p.x -= gameSpeed;
+                p.draw();
+            });
+
+            // Move and draw robots
+            robots.forEach(r => {
+                r.x -= gameSpeed;
+                r.draw();
+            });
+
+            // Move and draw crystals
+            crystals.forEach(c => {
+                c.x -= gameSpeed;
+                c.draw();
+            });
+
+            // Check for player-platform collision
+            let onPlatform = false;
+            platforms.forEach(p => {
+                // Simplified collision check for platforms
+                if (player.y + player.height <= p.y &&
+                    player.y + player.height + player.yVelocity >= p.y &&
+                    player.x + player.width > p.x &&
+                    player.x < p.x + p.width) {
+                    player.y = p.y - player.height;
+                    player.yVelocity = 0;
+                    player.isJumping = false;
+                    onPlatform = true;
+                }
+            });
+            if (!onPlatform) {
+                 player.isJumping = true;
+            }
+
+            // Check for player-robot collision
+            robots.forEach((r, index) => {
+                if (checkRobotCollision(player, r)) {
+                    // Game over on collision
+                    lives--;
+                    if (lives <= 0) {
+                        endGame();
+                    } else {
+                        // Reset player position and remove robot
+                        player.x = canvas.width / 4;
+                        player.y = 0;
+                        robots.splice(index, 1);
+                    }
+                }
+            });
+
+            // Check for player-crystal collision
+            crystals.forEach((c, index) => {
+                if (checkCollision(player, {x: c.x, y: c.y - c.size, width: c.size, height: c.size})) {
+                    score += 10;
+                    crystals.splice(index, 1);
+                }
+            });
+
+            // Remove off-screen objects
+            platforms = platforms.filter(p => p.x + p.width > 0);
+            robots = robots.filter(r => r.x + r.size > 0);
+            crystals = crystals.filter(c => c.x + c.size > 0);
+
+            // Respawn objects if they run low
+            if (platforms.length < 5) {
+                generateWorld();
+            }
+            
+            // Draw player
+            player.draw();
+
+            // Update UI
+            scoreDisplay.textContent = score;
+            livesDisplay.textContent = lives;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // End the game
+        function endGame() {
+            gameRunning = false;
+            finalScoreText.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+        
+        // Event listeners for keyboard
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                player.jump();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Event listeners for mobile controls
+        document.getElementById('jump-button').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            player.jump();
+        });
+        document.getElementById('move-left').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchControls['left'] = true;
+        });
+        document.getElementById('move-left').addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchControls['left'] = false;
+        });
+        document.getElementById('move-right').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchControls['right'] = true;
+        });
+        document.getElementById('move-right').addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchControls['right'] = false;
+        });
+        
+        // Restart button
+        restartButton.addEventListener('click', () => {
+            init();
+            animate();
+        });
+
+        // Initial setup
+        window.onload = function () {
+            init();
+            animate();
+        };
+
+    </script>
+
+</body>
+</html>
+
